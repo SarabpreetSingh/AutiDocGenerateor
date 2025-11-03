@@ -1,0 +1,1 @@
+memberSearchIndex = [{"p":"com.boa.hackathon.autodocgen","c":"AutodocgenApplication","l":"AutodocgenApplication()","u":"%3Cinit%3E()"},{"p":"com.boa.hackathon.autodocgen","c":"AutodocgenApplication","l":"main(String[])","u":"main(java.lang.String[])"}];updateSearchResults();
