@@ -44,6 +44,11 @@ public class DocController {
         return new ResponseEntity<>(resource, headers, HttpStatus.OK);
     }
 
+    @GetMapping("test")
+    public ResponseEntity<String> test() throws Exception {
+        return ResponseEntity.ok("Server is running");
+    }
+
     public static class Req {
         private String url;
 
