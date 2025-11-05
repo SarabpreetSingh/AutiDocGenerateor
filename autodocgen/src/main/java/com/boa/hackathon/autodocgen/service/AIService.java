@@ -1,10 +1,13 @@
 package com.boa.hackathon.autodocgen.service;
 
 import com.boa.hackathon.autodocgen.model.ClassMetadata;
+import com.boa.hackathon.autodocgen.model.Message;
 import com.boa.hackathon.autodocgen.model.MethodMeta;
 import com.boa.hackathon.autodocgen.model.ProjectMetadata;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -18,8 +21,12 @@ public class AIService {
     private static final Logger log = LoggerFactory.getLogger(AIService.class);
     private final RestTemplate rest = new RestTemplate();
 
-    private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
-    private static final String MODEL = "llama3";
+    @Value("${spring.ai.openai.base-url}")
+    private String OLLAMA_URL;
+    @Value("${spring.ai.openai.api-key}")
+    private String API_KEY;
+    @Value("${spring.ai.openai.chat.model}")
+    private String MODEL ;
 
     public void enrichProject(ProjectMetadata pm) {
         pm.getClasses().forEach(this::enrichClass);
@@ -82,16 +89,22 @@ public class AIService {
     // ✅ Main change — replaced OpenAI call with Ollama REST call
     private String callOllama(String prompt) {
         try {
+            Message user = Message.builder().role("user").content("Hi, How are you?").build();
+
             Map<String, Object> body = Map.of(
                     "model", MODEL,
-                    "prompt", prompt
+                    "messages", Collections.singletonList(user)
             );
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + API_KEY);
 
             HttpEntity<Map<String, Object>> req = new HttpEntity<>(body, headers);
+            log.info("Sending request to API URL: {}", OLLAMA_URL);
             ResponseEntity<String> resp = rest.postForEntity(OLLAMA_URL, req, String.class);
+
+//            log.info("response: {}", resp.getBody());
 
             if (resp.getStatusCode() != HttpStatus.OK || resp.getBody() == null) {
                 return "No response from Ollama";

@@ -1,7 +1,7 @@
 spring:
   ai:
     openai:
-      base-url: http://localhost:11434/v1
-      api-key: dummy
+      base-url: https://openrouter.ai/api/v1
+      api-key:
       chat:
-        model: llama3
+        model: meta-llama/llama-3.3-8b-instruct:free
