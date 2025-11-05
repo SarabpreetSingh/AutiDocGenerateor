@@ -12,4 +12,4 @@ jobs:
     steps:
 
 name: Ping Render server
-  run: curl -s https://autidocgenerateor.onrender.com/api/doc/test || true
+run: curl -s https://autidocgenerateor.onrender.com/api/doc/test || true
