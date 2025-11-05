@@ -2,12 +2,12 @@ name: Keep Render App Alive
 
 on:
   schedule:
-    cron: "/10 * * *"   # every 10 minutes
-    workflow_dispatch:        # allows manual run
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch:          # allows manual trigger
 
 jobs:
   keepalive:
     runs-on: ubuntu-latest
     steps:
-
-run: curl -s https://autidocgenerateor.onrender.com/api/doc/test || true
+      - name: Ping Render App
+        run: curl -s https://autidocgenerateor.onrender.com/api/doc/test || true
