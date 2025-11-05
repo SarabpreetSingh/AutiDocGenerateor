@@ -1,19 +1,19 @@
 # ==============================
 # 1. Build Stage
 # ==============================
-FROM openjdk:24-jdk AS builder
+FROM eclipse-temurin:21-jdk AS builder
 
-# Set the working directory
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy Maven wrapper and config files
+# Copy Maven wrapper and configuration
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
 
-# Ensure Maven wrapper is executable
+# Make mvnw executable
 RUN chmod +x mvnw
 
-# Preload dependencies (for better Docker layer caching)
+# Preload dependencies for better caching
 RUN ./mvnw dependency:go-offline -B
 
 # Copy the rest of the source code
@@ -25,16 +25,15 @@ RUN ./mvnw clean package -DskipTests
 # ==============================
 # 2. Runtime Stage
 # ==============================
-FROM openjdk:24-jdk-slim
+FROM eclipse-temurin:21-jre
 
-# Set working directory
 WORKDIR /app
 
-# Copy the fat JAR from the build stage
+# Copy only the built JAR from the builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-# Expose Spring Boot's default port
+# Expose Spring Boot’s default port
 EXPOSE 8080
 
-# Start the application
+# Run the application
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
