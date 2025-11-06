@@ -6,8 +6,10 @@ FROM eclipse-temurin:21-jdk AS builder
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install Graphviz (needed if PlantUML runs during build)
-RUN apt-get update && apt-get install -y graphviz && rm -rf /var/lib/apt/lists/*
+# Install Graphviz (minimal install for PlantUML)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends graphviz && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy Maven wrapper and configuration
 COPY .mvn .mvn
@@ -31,11 +33,13 @@ RUN ./mvnw clean package -DskipTests
 # ==============================
 FROM eclipse-temurin:21-jre
 
-# Set working directory
+# Set the working directory
 WORKDIR /app
 
-# Install Graphviz (needed at runtime for PlantUML)
-RUN apt-get update && apt-get install -y graphviz && rm -rf /var/lib/apt/lists/*
+# Install Graphviz (minimal install)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends graphviz && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the built JAR from the builder stage
 COPY --from=builder /app/target/*.jar app.jar

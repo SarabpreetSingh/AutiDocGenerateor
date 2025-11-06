@@ -14,6 +14,7 @@ import java.io.File;
 import java.nio.file.Files;
 
 @RestController
+@CrossOrigin
 @RequestMapping("/api/doc")
 @Slf4j
 public class DocController {
