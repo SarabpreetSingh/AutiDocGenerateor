@@ -4,6 +4,7 @@ import com.boa.hackathon.autodocgen.model.ProjectMetadata;
 import com.boa.hackathon.autodocgen.service.AIService;
 import com.boa.hackathon.autodocgen.service.DocGeneratorService;
 import com.boa.hackathon.autodocgen.service.RepoParserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 
 @RestController
 @RequestMapping("/api/doc")
+@Slf4j
 public class DocController {
 
 
@@ -46,6 +48,7 @@ public class DocController {
 
     @GetMapping("test")
     public ResponseEntity<String> test() throws Exception {
+        log.info("test");
         return ResponseEntity.ok("Server is running");
     }
 
