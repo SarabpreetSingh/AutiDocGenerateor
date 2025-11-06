@@ -1,10 +1,8 @@
 package com.boa.hackathon.autodocgen.service;
 
 import com.boa.hackathon.autodocgen.model.ClassMetadata;
-import com.boa.hackathon.autodocgen.model.Message;
 import com.boa.hackathon.autodocgen.model.MethodMeta;
 import com.boa.hackathon.autodocgen.model.ProjectMetadata;
-import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,112 +19,108 @@ public class AIService {
     private static final Logger log = LoggerFactory.getLogger(AIService.class);
     private final RestTemplate rest = new RestTemplate();
 
-    @Value("${spring.ai.openai.base-url}")
-    private String OLLAMA_URL;
     @Value("${spring.ai.openai.api-key}")
-    private String API_KEY;
+    private  String OPENROUTER_KEY;
+
+    @Value("${spring.ai.openai.base-url}")
+    private  String OLLAMA_URL;
+
     @Value("${spring.ai.openai.chat.model}")
-    private String MODEL ;
+    private  String MODEL;
+
+
 
     public void enrichProject(ProjectMetadata pm) {
-        pm.getClasses().forEach(this::enrichClass);
+        List<ClassMetadata> classes = pm.getClasses();
+        if (classes == null || classes.isEmpty()) return;
+
+        int batchSize = 10; // one call per 10 classes
+        for (int i = 0; i < classes.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, classes.size());
+            List<ClassMetadata> batch = classes.subList(i, end);
+            enrichBatch(batch);
+        }
     }
 
-    private void enrichClass(ClassMetadata cm) {
+    private void enrichBatch(List<ClassMetadata> batch) {
         try {
-            String prompt = buildClassPrompt(cm);
-            String ai = callOllama(prompt);
-            cm.setAiDescription(ai);
 
-            if (cm.getMethods() != null) {
-                for (MethodMeta mm : cm.getMethods()) {
-                    String mp = buildMethodPrompt(cm, mm);
-                    String ma = callOllama(mp);
-                    mm.setAiDescription(ma);
+            StringBuilder prompt = new StringBuilder("You are a senior backend engineer. For each of the following Java classes, explain its business purpose clearly in the format:\n\n");
+            prompt.append("CLASS: <class name>\nDESCRIPTION: <explanation>\nKEY_POINTS:\n - point1\n - point2\n\n");
+
+            for (ClassMetadata cm : batch) {
+                prompt.append("\nClassName: ").append(cm.getClassName())
+                        .append("\nType: ").append(cm.getType())
+                        .append("\nPackage: ").append(cm.getPackageName())
+                        .append("\nFields: ").append(Optional.ofNullable(cm.getFields()).orElse(Collections.emptyList()))
+                        .append("\nMethods: ");
+
+                if (cm.getMethods() != null) {
+                    prompt.append(cm.getMethods().stream().map(MethodMeta::getName).collect(Collectors.toList()));
+                } else prompt.append("[]");
+
+                Set<String> domain = new HashSet<>();
+                if (cm.getMethods() != null) {
+                    cm.getMethods().forEach(m -> {
+                        if (m.getDomainKeywords() != null) domain.addAll(m.getDomainKeywords());
+                    });
                 }
+                prompt.append("\nDomain hints: ").append(domain).append("\n");
             }
+
+            String response = callOpenRouter(prompt.toString());
+            distributeResponse(batch, response);
+
         } catch (Exception e) {
-            log.warn("AI enrich failed for {}: {}", cm.getClassName(), e.getMessage());
+            log.error("Batch enrichment failed: {}", e.getMessage());
         }
     }
 
-    private String buildClassPrompt(ClassMetadata cm) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are a senior software engineer. Given the following class metadata, ")
-                .append("write a detailed plain-English description of the class’s business responsibility and key points.\n")
-                .append("ClassName: ").append(cm.getClassName()).append("\n")
-                .append("Type: ").append(cm.getType()).append("\n")
-                .append("Package: ").append(cm.getPackageName()).append("\n")
-                .append("Fields: ").append(Optional.ofNullable(cm.getFields()).orElse(Collections.emptyList())).append("\n")
-                .append("Methods: ");
-        if (cm.getMethods() != null) {
-            sb.append(cm.getMethods().stream().map(MethodMeta::getName).collect(Collectors.toList()));
-        } else sb.append("[]");
-        sb.append("\nDomain hints (from code): ");
-        Set<String> domain = new HashSet<>();
-        if (cm.getMethods() != null) {
-            cm.getMethods().forEach(m -> {
-                if (m.getDomainKeywords() != null) domain.addAll(m.getDomainKeywords());
-            });
+    private void distributeResponse(List<ClassMetadata> batch, String aiResponse) {
+
+        if (aiResponse == null || aiResponse.isBlank()) return;
+        String[] parts = aiResponse.split("CLASS:");
+        for (int i = 0; i < batch.size() && i < parts.length - 1; i++) {
+            batch.get(i).setAiDescription("CLASS:" + parts[i + 1].trim());
         }
-        sb.append(domain).append("\n")
-                .append("Write the answer as:\nDESCRIPTION: <long description>\nKEY_POINTS:\n - point1\n - point2");
-        return sb.toString();
     }
 
-    private String buildMethodPrompt(ClassMetadata cm, MethodMeta mm) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are a software engineer. Explain this method in one sentence in business terms, and list any side-effects (DB writes, external calls) if any.\n")
-                .append("Class: ").append(cm.getClassName()).append("\n")
-                .append("Method: ").append(mm.getName()).append("\n")
-                .append("Parameters: ").append(Optional.ofNullable(mm.getParams()).orElse(Collections.emptyList())).append("\n")
-                .append("Repository calls: ").append(Optional.ofNullable(mm.getRepositoryCalls()).orElse(Collections.emptyList())).append("\n")
-                .append("Domain keywords: ").append(Optional.ofNullable(mm.getDomainKeywords()).orElse(Collections.emptyList())).append("\n")
-                .append("Answer format:\nSENTENCE: <one-liner>\nSIDE_EFFECTS: <list>");
-        return sb.toString();
-    }
-
-    // ✅ Main change — replaced OpenAI call with Ollama REST call
-    private String callOllama(String prompt) {
+    private String callOpenRouter(String prompt) {
         try {
-            Message user = Message.builder().role("user").content("Hi, How are you?").build();
+            if (OPENROUTER_KEY == null || OPENROUTER_KEY.isBlank()) {
+                return "Error: OPENROUTER_API_KEY not set in environment variables.";
+            }
 
-            Map<String, Object> body = Map.of(
-                    "model", MODEL,
-                    "messages", Collections.singletonList(user)
-            );
+            log.info("Calling OpenRouter API for batch...");
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("model", MODEL);
+            body.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+            body.put("max_tokens", 8000); // reduce to stay under token limits
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + API_KEY);
+            headers.set("Authorization", "Bearer " + OPENROUTER_KEY);
+            headers.set("HTTP-Referer", "https://autodocgen");
+            headers.set("X-Title", "AutoDocGenerator");
 
             HttpEntity<Map<String, Object>> req = new HttpEntity<>(body, headers);
-            log.info("Sending request to API URL: {}", OLLAMA_URL);
-            ResponseEntity<String> resp = rest.postForEntity(OLLAMA_URL, req, String.class);
+            ResponseEntity<Map> resp = rest.exchange(OLLAMA_URL, HttpMethod.POST, req, Map.class);
 
-//            log.info("response: {}", resp.getBody());
+            if (resp.getBody() == null) return "No response received";
 
-            if (resp.getStatusCode() != HttpStatus.OK || resp.getBody() == null) {
-                return "No response from Ollama";
-            }
+            List<?> choices = (List<?>) resp.getBody().get("choices");
+            if (choices == null || choices.isEmpty()) return "No choices returned";
 
-            // Ollama returns multiple JSON chunks separated by newlines — extract "response" field
-            StringBuilder output = new StringBuilder();
-            for (String line : resp.getBody().split("\n")) {
-                if (line.trim().startsWith("{") && line.contains("\"response\"")) {
-                    int start = line.indexOf("\"response\":\"");
-                    if (start != -1) {
-                        start += 12;
-                        int end = line.indexOf("\"", start);
-                        if (end > start) {
-                            output.append(line, start, end);
-                        }
-                    }
-                }
-            }
-            return output.toString().isBlank() ? resp.getBody() : output.toString();
+            Map<?, ?> first = (Map<?, ?>) choices.get(0);
+            Map<?, ?> message = (Map<?, ?>) first.get("message");
+            String content = (String) message.get("content");
+
+            log.info("Batch AI Response (trimmed): {}", content != null ? content.substring(0, Math.min(400, content.length())) : "null");
+            return content;
         } catch (Exception e) {
-            return "Error calling Ollama: " + e.getMessage();
+            log.error("Error calling OpenRouter: {}", e.getMessage());
+            return "Error calling OpenRouter: " + e.getMessage();
         }
     }
 }
