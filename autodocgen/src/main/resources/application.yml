@@ -1,7 +1,7 @@
 spring:
   ai:
     openai:
-      base-url: https://openrouter.ai/api/v1
-      api-key: DUMMY
+      base-url: https://openrouter.ai/api/v1/chat/completions
+      api-key: Dummy
       chat:
         model: meta-llama/llama-3.3-8b-instruct:free

@@ -146,27 +146,80 @@ public class DocGeneratorService {
             if (c.getMethods() == null) continue;
 
             for (MethodMeta m : c.getMethods()) {
-                String path = (m.getEndpoint() != null && !m.getEndpoint().isBlank())
-                        ? m.getEndpoint() : ("/" + m.getName());
-                String verb = (m.getHttpMethod() != null && !m.getHttpMethod().isBlank())
-                        ? m.getHttpMethod().toLowerCase() : "get";
+                String methodName = m.getName().toLowerCase();
+
+
+                String verb = "get";
+                if (methodName.startsWith("get") || methodName.startsWith("fetch")) verb = "get";
+                else if (methodName.startsWith("create") || methodName.startsWith("add") || methodName.startsWith("save")) verb = "post";
+                else if (methodName.startsWith("update") || methodName.startsWith("edit") || methodName.startsWith("put")) verb = "put";
+                else if (methodName.startsWith("delete") || methodName.startsWith("remove")) verb = "delete";
+                else if (methodName.startsWith("patch")) verb = "patch";
+
+
+                String basePath = "/" + c.getClassName().replace("Controller", "").toLowerCase();
+                String path = basePath + "/" + methodName;
+
+                // If method name has "By" (like getProductById), include a path param
+                if (methodName.contains("by")) {
+                    String[] parts = methodName.split("by");
+                    String param = parts.length > 1 ? parts[1].replaceAll("[^a-zA-Z]", "").toLowerCase() : "id";
+                    path = basePath + "/{" + param + "}";
+                }
+
+                String description = escapeJson(
+                        m.getAiDescription() != null ? m.getAiDescription() : m.getComment()
+                );
 
                 sb.append("    \"").append(path).append("\": {\n")
                         .append("      \"").append(verb).append("\": {\n")
-                        .append("        \"summary\": \"").append(escapeJson(m.getAiDescription() != null ? m.getAiDescription() : m.getComment())).append("\",\n")
-                        .append("        \"requestBody\": {\n")
-                        .append("          \"content\": {\n")
-                        .append("            \"application/json\": {\n")
-                        .append("              \"schema\": { \"type\": \"object\" },\n")
-                        .append("              \"example\": { \"sampleField\": \"value\" }\n")
-                        .append("            }\n          }\n        },\n")
-                        .append("        \"responses\": {\n")
+                        .append("        \"summary\": \"").append(description).append("\",\n")
+                        .append("        \"requestBody\": {\n");
+
+
+                if (!verb.equals("get") && !verb.equals("delete")) {
+                    sb.append("          \"content\": {\n")
+                            .append("            \"application/json\": {\n")
+                            .append("              \"schema\": { \"type\": \"object\" },\n")
+                            .append("              \"example\": {\n");
+
+                    if (m.getParams() != null && !m.getParams().isEmpty()) {
+                        for (String param : m.getParams()) {
+                            String[] parts = param.split(" ");
+                            if (parts.length == 2) {
+                                sb.append("                \"").append(parts[1]).append("\": \"").append(parts[0]).append("\",\n");
+                            }
+                        }
+                        sb.setLength(sb.length() - 2); // remove last comma
+                    } else {
+                        sb.append("                \"sampleField\": \"value\"");
+                    }
+                    sb.append("\n              }\n            }\n          }\n        },\n");
+                } else {
+                    sb.append("          \"required\": false\n        },\n");
+                }
+
+
+                sb.append("        \"responses\": {\n")
                         .append("          \"200\": {\n")
                         .append("            \"description\": \"Successful response\",\n")
                         .append("            \"content\": {\n")
                         .append("              \"application/json\": {\n")
-                        .append("                \"example\": { \"status\": \"ok\" }\n")
-                        .append("              }\n            }\n")
+                        .append("                \"example\": ");
+
+                if (verb.equals("get")) {
+                    sb.append("{ \"data\": [{ \"id\": 1, \"name\": \"sample\" }] }");
+                } else if (verb.equals("post")) {
+                    sb.append("{ \"message\": \"Resource created successfully\", \"id\": 123 }");
+                } else if (verb.equals("put") || verb.equals("patch")) {
+                    sb.append("{ \"message\": \"Resource updated successfully\" }");
+                } else if (verb.equals("delete")) {
+                    sb.append("{ \"message\": \"Resource deleted successfully\" }");
+                } else {
+                    sb.append("{ \"status\": \"ok\" }");
+                }
+
+                sb.append("\n              }\n            }\n")
                         .append("          }\n        }\n")
                         .append("      }\n    },\n");
             }
@@ -176,9 +229,11 @@ public class DocGeneratorService {
             int last = sb.lastIndexOf(",\n");
             sb.delete(last, last + 2);
         }
+
         sb.append("  }\n}");
         return sb.toString();
     }
+
 
     private String escapeJson(String s) {
         if (s == null) return "";
